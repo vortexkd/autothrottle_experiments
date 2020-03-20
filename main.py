@@ -10,7 +10,11 @@ print(datetime.now())
 t = datetime.now()
 print("{0:0=2d}".format(t.month + 10))
 
-
+print("starting")
 req = AutoThrottledRequester(initial_delay=0)
+print('here')
 server = MockFixedInterval429ErrorServer()
-req.run_requests(server)
+responses = req.run_requests(server)
+for each in responses:
+    print(each)
+print('done')
