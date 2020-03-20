@@ -3,7 +3,6 @@ from http import HTTPStatus
 import time
 from autothrottle.utils import TimeInterval, get_timestamp_key
 from datetime import datetime
-import logging
 
 
 class Mock429ErrorServer(AbstractServer):
@@ -17,7 +16,7 @@ class Mock429ErrorServer(AbstractServer):
     def request(self, requester=None):
         if requester is None:
             return HTTPStatus.FORBIDDEN
-        request_count, start_time = self.request_history.get(requester, 0)
+        request_count, start_time = self.request_history.get(requester, (0, time.time()))
         if start_time < time.time() - self.time_interval:
             self.__reset_history__(requester)
             return HTTPStatus.OK
@@ -46,7 +45,7 @@ class MockFixedInterval429ErrorServer(AbstractServer):
             self.__reset_history__(requester)
             return HTTPStatus.OK
         if request_count > self.request_limit:
-            print(logging.INFO, "responding with 429.")
+            print("responding with 429.")
             return HTTPStatus.TOO_MANY_REQUESTS
         self.request_history[requester] = (request_count + 1, start_time)
         return HTTPStatus.OK

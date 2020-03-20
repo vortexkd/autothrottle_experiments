@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
 from autothrottle.mock_server import AbstractServer
+from autothrottle.utils import TimeInterval, SlidingWindow, get_parts
 from http import HTTPStatus
 from datetime import datetime
 import time
-import logging
+from typing import Tuple
+
 
 """
 There are 4 common intervals used for api rate limits that are considered here.
@@ -24,31 +26,56 @@ class AutoThrottledRequester:
         self.name = name
         self.delay = initial_delay
         self.request_history = {}
-        self.delay_estimates = {}  # server, interval, number, confidence?
+        self.delay_estimates = {}
+        self.delay_intervals = {}
+        self.possible_intervals = (TimeInterval.SECOND, TimeInterval.MINUTE, TimeInterval.HOUR, TimeInterval.DAY)
+        # 766610 / 1000000
 
     def run_requests(self, server: AbstractServer, number_of_requests=60):
-        print('running requests')
+        """
+        :param server: the entity to sent requests to.
+        :param number_of_requests: the number of requests to send in total. (This would be, say, a list of urls or something).
+        :return: responses from the server.
+        """
         for i in range(number_of_requests):
             print("request: {}".format(i))
+            before_sent = datetime.now()
+            # request time delta latency TODO: mock server with latency simulation.
             response = server.request(requester=self.name)
-            self.add_to_history(server, response)
+            # estimation of when the server received the response.
+            sent_at = datetime.now() - (datetime.now() - before_sent) / 2
+            history = self.add_to_history(server, sent_at, response)
             if response == HTTPStatus.TOO_MANY_REQUESTS:
-                self.increase_delay()
+                self.increase_delay(server, sent_at, self.get_delay_interval(server), history)
             if self.delay:
                 time.sleep(self.delay)
             yield response
+        print(self.request_history)
 
-    def increase_delay(self):
-        pass
+    def increase_delay(self, server, sent_at, time_slot, history: Tuple[SlidingWindow]):
+        # 1. estimate request rate, # 2. estimate the request rate -1.
+        wanted_rate = (history[0].previous_count * (sent_at.microsecond / get_parts(time_slot) * get_parts(time_slot)))\
+                       + history[0].current_count - 1
+        # 3. calculate delay required to achieve that rate.
+        print(history[0])
+        print(wanted_rate)
+        self.delay = 1 / wanted_rate
+        print("setting delay to: {}".format(self.delay))
+        # 4. set delay to that value.
+        # time.sleep(1)  # calculate the amount of time required to reset.
 
-    def add_to_history(self, server, response):
-        if server.name not in self.request_history.keys():
-            self.request_history[server.name] = [(datetime.now(), response)]
-        else:
-            self.request_history[server.name].append((datetime.now(), response))
+    def get_delay_interval(self, server):
+        return self.delay_intervals.get(server, TimeInterval.SECOND)
 
+    def add_to_history(self, server, sent_at, res):
+        if res == HTTPStatus.OK:
+            if server.name not in self.request_history.keys():
+                self.request_history[server.name] = (SlidingWindow(TimeInterval.SECOND, sent_at),
+                                                     SlidingWindow(TimeInterval.MINUTE, sent_at),
+                                                     SlidingWindow(TimeInterval.HOUR, sent_at),
+                                                     SlidingWindow(TimeInterval.DAY, sent_at))
+            else:
+                for struct in self.request_history[server.name]:
+                    struct.add_request(sent_at)
+        return self.request_history[server.name]
 
-class DelayStrategy(ABC):
-
-    def __init__(self, **kwargs):
-        super(DelayStrategy, self).__init__(**kwargs)
