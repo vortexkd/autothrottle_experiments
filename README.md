@@ -3,6 +3,9 @@
 There isn't much to setup.
 Python 3.7+ should work, 
 install requirements from requirements.txt
+The actual autothrottler is in `autothrottle/autothrottle.py`
+measuring requests across time frames are managed in `autothrottle/utils.py`
+ in the SlidingWindow class
 
 
 ## Ideas / Assumptions
@@ -26,7 +29,24 @@ this could be a performance hit.
 I've chosen a Sliding Window Algorithm which i read about here
 https://blog.cloudflare.com/counting-things-a-lot-of-different-things/
 
-because this seems like a good approximation of how servers can implement rate limiting algorithms
-Therefore mimicking that should perform generally well.
+because this seems like a good approximation of how servers can implement rate limiting algorithms.
+
+The idea is to count requests during the current time interval and store requests for the previous
+time interval. in the case of time interval = minutes
+The rate can then be estimated by: 
+
+```
+# Silding Window rate limit estimation
+(requests_in_previous_minute * 
+((60 seconds - seconds_completed_in_current_minute) / 60 seconds)
+ + requests_in_current_minute)
+```
+thus assuming a roughly constant rate of requests in the previous interval.
+
+Further
+In cases where a rate limit error is encountered, we are aware that any more requests
+in the current interval will cause errors, and so we should wait until the end of the interval
+before making a new request.
+
 
 #### TODO
