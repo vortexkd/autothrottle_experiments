@@ -3,7 +3,9 @@
 There isn't much to setup.
 Python 3.7+ should work, 
 install requirements from requirements.txt
+
 The actual autothrottler is in `autothrottle/autothrottle.py`
+
 measuring requests across time frames are managed in `autothrottle/utils.py`
  in the SlidingWindow class
 
