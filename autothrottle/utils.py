@@ -37,7 +37,27 @@ def get_seconds(degree: TimeInterval):
 
 
 def get_time_part(time_stamp: datetime, degree: TimeInterval):
-    return time_stamp.__getattribute__(time_interval_attr[degree])  # .microsecond
+    return time_stamp.__getattribute__(time_interval_attr[degree])
+
+
+def get_seconds_until_end_of_interval(time_stamp: datetime, interval: TimeInterval) -> int:
+    # if interval is seconds, return 1.
+    # if interval is minutes, return:  get_seconds(1 minute) - current second
+    # if interval is hour, return:  get_seconds(1 hour) - (get_seconds(1 minute) * (60 minutes - current_minutes)
+    #                               + (60 seconds - current second))
+    # if interval is day, return:  get_seconds(1 day) - (get_seconds(1 hour) * (24 hours - current hour) +
+    #                               (get_seconds(1 min) * (60 minutes - current_minutes) + (60 seconds - current second))
+    spent_time = 0
+    if interval == TimeInterval.SECOND:
+        return get_seconds(interval) - spent_time
+    spent_time += time_stamp.second
+    if interval == TimeInterval.MINUTE:
+        return get_seconds(interval) - spent_time
+    spent_time += time_stamp.minute * get_seconds(TimeInterval.MINUTE)
+    if interval == TimeInterval.HOUR:
+        return get_seconds(interval) - spent_time
+    spent_time += time_stamp.hour * get_seconds(TimeInterval.HOUR)
+    return get_seconds(interval) - spent_time
 
 
 class SlidingWindow:

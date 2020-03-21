@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from autothrottle.mock_server import AbstractServer
-from autothrottle.utils import TimeInterval, SlidingWindow, get_parts, get_next_interval, get_seconds, get_time_part
+from autothrottle.utils import TimeInterval, SlidingWindow, get_parts, get_next_interval, get_seconds, get_time_part, \
+    get_seconds_until_end_of_interval
 from http import HTTPStatus
 from datetime import datetime
 import time
@@ -64,18 +65,13 @@ class AutoThrottledRequester:
                                                     / get_parts(time_slot))) \
                        + history[0].current_count - 1
         # 3. calculate delay required to achieve that rate.
-        print(history[0], time_slot)
-        print("estimated rate: ", wanted_rate)
         self.delay = 1 / wanted_rate
         print("setting delay to: {}".format(self.delay))
         self.wait_until_end_of_time_slot(sent_at, time_slot)
         self.failover_lives -= 1
 
     def wait_until_end_of_time_slot(self, sent_at: datetime, time_slot: TimeInterval):
-        if time_slot == TimeInterval.SECOND:
-            time.sleep(1)
-        else:
-            time.sleep(get_parts(time_slot) - get_time_part(sent_at, time_slot))
+        get_seconds_until_end_of_interval(sent_at, time_slot)
 
     def get_delay_interval(self, server):
         return self.delay_intervals.get(server.name, TimeInterval.SECOND)
