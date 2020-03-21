@@ -21,16 +21,20 @@ In implementing these there are 2 possible strategies that can be used to measur
 within which a maximum of N requests can be made.
 
 """
+
+
+
 class AutoThrottledRequester:
 
     def __init__(self, name='AutoThrottledRequester', initial_delay=1, concurrent_threads=1):
         self.name = name
         self.delay = initial_delay
+        self.rate_limit_reset_delay = 0
         self.request_history = {}
         self.delay_estimates = {}
         self.delay_intervals = {}
         self.possible_intervals = (TimeInterval.SECOND, TimeInterval.MINUTE, TimeInterval.HOUR, TimeInterval.DAY)
-        self.__initial_failover_lives__ = max(3, concurrent_threads + 2)  # TODO: logic for this.
+        self.__initial_failover_lives__ = max(3, concurrent_threads + 2)  # TODO: better logic for this redundancy?
         self.failover_lives = max(3, concurrent_threads + 2)
 
     def run_requests(self, server: AbstractServer, number_of_requests=60):
@@ -51,9 +55,13 @@ class AutoThrottledRequester:
                 self.increase_delay(server, sent_at, self.get_delay_interval(server), history)
             else:
                 self.failover_lives = self.__initial_failover_lives__
-            if self.delay:
-                time.sleep(self.delay * get_seconds(self.get_delay_interval(server)))
             yield response
+            if self.rate_limit_reset_delay:
+                time.sleep(self.rate_limit_reset_delay)
+                self.rate_limit_reset_delay = 0
+            elif self.delay:
+                time.sleep(self.delay * get_seconds(self.get_delay_interval(server)))
+
         print(self.request_history)
 
     def increase_delay(self, server, sent_at, time_slot: TimeInterval, history: Tuple[SlidingWindow]):
@@ -61,17 +69,19 @@ class AutoThrottledRequester:
         if self.failover_lives <= 0:
             time_slot = get_next_interval(time_slot)
             self.delay_intervals[server.name] = time_slot
+            self.failover_lives = self.__initial_failover_lives__
         wanted_rate = (history[0].previous_count * ((get_parts(time_slot) - get_time_part(sent_at, time_slot))
                                                     / get_parts(time_slot))) \
                        + history[0].current_count - 1
         # 3. calculate delay required to achieve that rate.
         self.delay = 1 / wanted_rate
-        print("setting delay to: {}".format(self.delay))
+        print("setting delay to: {}".format(self.delay), time_slot)
         self.wait_until_end_of_time_slot(sent_at, time_slot)
         self.failover_lives -= 1
 
     def wait_until_end_of_time_slot(self, sent_at: datetime, time_slot: TimeInterval):
-        get_seconds_until_end_of_interval(sent_at, time_slot)
+        self.rate_limit_reset_delay = get_seconds_until_end_of_interval(sent_at, time_slot)
+
 
     def get_delay_interval(self, server):
         return self.delay_intervals.get(server.name, TimeInterval.SECOND)
