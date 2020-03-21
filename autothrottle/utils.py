@@ -9,6 +9,13 @@ class TimeInterval(Enum):
     DAY = "%Y/%m/%d", 86400, 24
 
 
+time_interval_next_map = {TimeInterval.SECOND: TimeInterval.MINUTE, TimeInterval.MINUTE: TimeInterval.HOUR,
+                          TimeInterval.HOUR: TimeInterval.DAY}
+
+time_interval_attr = {TimeInterval.SECOND: 'microsecond', TimeInterval.MINUTE: 'second',
+                      TimeInterval.HOUR: 'minute', TimeInterval.DAY: 'hour'}
+
+
 def get_timestamp_key(t: datetime, degree: TimeInterval):
     return t.strftime(degree.value[0])
 
@@ -20,6 +27,17 @@ def get_delta(degree: TimeInterval):
 def get_parts(degree: TimeInterval):
     return degree.value[2]
 
+
+def get_next_interval(degree: TimeInterval):
+    return time_interval_next_map.get(degree, TimeInterval.DAY)
+
+
+def get_seconds(degree: TimeInterval):
+    return degree.value[1]
+
+
+def get_time_part(time_stamp: datetime, degree: TimeInterval):
+    return time_stamp.__getattribute__(time_interval_attr[degree])  # .microsecond
 
 
 class SlidingWindow:
@@ -48,11 +66,9 @@ class SlidingWindow:
             self.current_count += 1
 
     def reset_window(self, new_current, new_previous_count):
-        print("slide!", self)
         self.current = new_current
         self.current_count = 1
         self.previous_count = new_previous_count
-        print("slid.")
 
     def is_next_window(self, label: str):
         return get_timestamp_key(self.current + get_delta(self.interval), self.interval) == label

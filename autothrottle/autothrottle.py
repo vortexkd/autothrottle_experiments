@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from autothrottle.mock_server import AbstractServer
-from autothrottle.utils import TimeInterval, SlidingWindow, get_parts
+from autothrottle.utils import TimeInterval, SlidingWindow, get_parts, get_next_interval, get_seconds, get_time_part
 from http import HTTPStatus
 from datetime import datetime
 import time
@@ -22,14 +22,15 @@ within which a maximum of N requests can be made.
 """
 class AutoThrottledRequester:
 
-    def __init__(self, name='AutoThrottledRequester', initial_delay=1):
+    def __init__(self, name='AutoThrottledRequester', initial_delay=1, concurrent_threads=1):
         self.name = name
         self.delay = initial_delay
         self.request_history = {}
         self.delay_estimates = {}
         self.delay_intervals = {}
         self.possible_intervals = (TimeInterval.SECOND, TimeInterval.MINUTE, TimeInterval.HOUR, TimeInterval.DAY)
-        # 766610 / 1000000
+        self.__initial_failover_lives__ = max(3, concurrent_threads + 2)  # TODO: logic for this.
+        self.failover_lives = max(3, concurrent_threads + 2)
 
     def run_requests(self, server: AbstractServer, number_of_requests=60):
         """
@@ -47,25 +48,37 @@ class AutoThrottledRequester:
             history = self.add_to_history(server, sent_at, response)
             if response == HTTPStatus.TOO_MANY_REQUESTS:
                 self.increase_delay(server, sent_at, self.get_delay_interval(server), history)
+            else:
+                self.failover_lives = self.__initial_failover_lives__
             if self.delay:
-                time.sleep(self.delay)
+                time.sleep(self.delay * get_seconds(self.get_delay_interval(server)))
             yield response
         print(self.request_history)
 
-    def increase_delay(self, server, sent_at, time_slot, history: Tuple[SlidingWindow]):
+    def increase_delay(self, server, sent_at, time_slot: TimeInterval, history: Tuple[SlidingWindow]):
         # 1. estimate request rate, # 2. estimate the request rate -1.
-        wanted_rate = (history[0].previous_count * (sent_at.microsecond / get_parts(time_slot) * get_parts(time_slot)))\
+        if self.failover_lives <= 0:
+            time_slot = get_next_interval(time_slot)
+            self.delay_intervals[server.name] = time_slot
+        wanted_rate = (history[0].previous_count * ((get_parts(time_slot) - get_time_part(sent_at, time_slot))
+                                                    / get_parts(time_slot))) \
                        + history[0].current_count - 1
         # 3. calculate delay required to achieve that rate.
-        print(history[0])
-        print(wanted_rate)
+        print(history[0], time_slot)
+        print("estimated rate: ", wanted_rate)
         self.delay = 1 / wanted_rate
         print("setting delay to: {}".format(self.delay))
-        # 4. set delay to that value.
-        # time.sleep(1)  # calculate the amount of time required to reset.
+        self.wait_until_end_of_time_slot(sent_at, time_slot)
+        self.failover_lives -= 1
+
+    def wait_until_end_of_time_slot(self, sent_at: datetime, time_slot: TimeInterval):
+        if time_slot == TimeInterval.SECOND:
+            time.sleep(1)
+        else:
+            time.sleep(get_parts(time_slot) - get_time_part(sent_at, time_slot))
 
     def get_delay_interval(self, server):
-        return self.delay_intervals.get(server, TimeInterval.SECOND)
+        return self.delay_intervals.get(server.name, TimeInterval.SECOND)
 
     def add_to_history(self, server, sent_at, res):
         if res == HTTPStatus.OK:
