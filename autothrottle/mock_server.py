@@ -1,13 +1,13 @@
 from autothrottle.servers import AbstractServer
 from http import HTTPStatus
 import time
-from autothrottle.utils import TimeInterval, get_timestamp_key
+from autothrottle.utils import TimeInterval, get_timestamp_key, get_seconds
 from datetime import datetime
 
 
 class Mock429ErrorServer(AbstractServer):
 
-    def __init__(self, request_limit=60, time_interval=60, **kwargs):
+    def __init__(self, request_limit=60, time_interval: TimeInterval = TimeInterval.SECOND, **kwargs):
         super(Mock429ErrorServer, self).__init__(**kwargs)
         self.request_limit = request_limit
         self.time_interval = time_interval
@@ -17,7 +17,7 @@ class Mock429ErrorServer(AbstractServer):
         if requester is None:
             return HTTPStatus.FORBIDDEN
         request_count, start_time = self.request_history.get(requester, (0, time.time()))
-        if start_time < time.time() - self.time_interval:
+        if start_time < time.time() - get_seconds(self.time_interval):
             self.__reset_history__(requester)
             return HTTPStatus.OK
         if request_count > self.request_limit:

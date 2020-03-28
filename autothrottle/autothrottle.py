@@ -5,7 +5,7 @@ from autothrottle.utils import TimeInterval, SlidingWindow, get_parts, get_next_
 from http import HTTPStatus
 from datetime import datetime
 import time
-from typing import Tuple
+from typing import Tuple, Dict
 
 
 """
@@ -32,7 +32,7 @@ class AutoThrottledRequester:
         self.rate_limit_reset_delay = 0
         self.request_history = {}
         self.delay_estimates = {}
-        self.delay_intervals = {}
+        self.delay_intervals: Dict[str: TimeInterval] = {}
         self.possible_intervals = (TimeInterval.SECOND, TimeInterval.MINUTE, TimeInterval.HOUR, TimeInterval.DAY)
         self.__initial_failover_lives__ = max(3, concurrent_threads + 2)  # TODO: better logic for this redundancy?
         self.failover_lives = max(3, concurrent_threads + 2)
